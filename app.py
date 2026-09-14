@@ -59,7 +59,6 @@ if uploaded_files:
     
     # 4. TAGESVERLAUF IM DETAIL (Mit Dropdown-Auswahl für das Datum)
     available_dates = df['Datum'].unique()
-    # Der aktuellste Tag ist standardmäßig vorausgewählt
     selected_date = st.selectbox("Wähle einen Tag für den 24h-Detailverlauf aus:", available_dates, index=len(available_dates)-1)
     
     df_selected_day = df[df['Datum'] == selected_date]
@@ -107,3 +106,46 @@ if uploaded_files:
         fig_hum.add_hline(y=60, line_dash="dash", line_color="red", annotation_text="Warn-Grenze")
         fig_hum.update_layout(title="Luftfeuchtigkeits-Trend (%)", hovermode="x unified")
         st.plotly_chart(fig_hum, use_container_width=True)
+
+    st.divider()
+
+    # 6. HEATMAP: MUSTER-ERKENNUNG
+    st.subheader("🔥 Muster-Erkennung: Wann ist es am feuchtesten?")
+    st.write("Diese Heatmap zeigt die durchschnittliche Luftfeuchtigkeit je Stunde. Grüne Felder sind optimal (unter 50%), gelbe bis rote Felder zeigen erhöhte Feuchtigkeit.")
+    
+    # Stunde aus dem Zeitstempel extrahieren
+    df_heat = df.copy()
+    df_heat['Stunde'] = df_heat['Zeit'].dt.hour
+    
+    # Pivot-Tabelle erstellen (Zeilen=Datum, Spalten=Stunde, Werte=Ø Luftfeuchtigkeit)
+    heatmap_pivot = df_heat.pivot_table(
+        values='Relative Luftfeuchtigkeit_Prozentsatz', 
+        index='Datum', 
+        columns='Stunde', 
+        aggfunc='mean'
+    )
+    
+    # Sicherstellen, dass alle 24 Stunden (0-23) als Spalten existieren
+    heatmap_pivot = heatmap_pivot.reindex(columns=list(range(24)))
+    
+    # Heatmap mit Plotly zeichnen
+    fig_heatmap = go.Figure(data=go.Heatmap(
+        z=heatmap_pivot.values,
+        x=heatmap_pivot.columns,
+        y=heatmap_pivot.index,
+        colorscale='RdYlGn_r', # Grün zu Rot (umgekehrt, da viel Feuchtigkeit = Rot)
+        zmin=40, # Fixe Skala für konsistente Farben: 40% ist sattes Grün
+        zmax=70, # 70% ist sattes Rot
+        hoverongaps=False,
+        hovertemplate='Datum: %{y}<br>Uhrzeit: %{x}:00 Uhr<br>Ø Feuchte: %{z:.1f} %<extra></extra>'
+    ))
+    
+    fig_heatmap.update_layout(
+        xaxis_title="Uhrzeit (Stunde)",
+        yaxis_title="Datum",
+        xaxis=dict(tickmode='linear', tick0=0, dtick=1), # Jede Stunde auf der X-Achse anzeigen
+        yaxis_autorange='reversed', # Chronologisch: Neuestes Datum unten (oder oben, je nach Geschmack)
+        height=400 + (len(heatmap_pivot) * 15) # Dynamische Höhe, je nachdem wie viele Tage hochgeladen werden
+    )
+    
+    st.plotly_chart(fig_heatmap, use_container_width=True)
